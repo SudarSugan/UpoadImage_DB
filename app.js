@@ -45,11 +45,11 @@ const productSchema = new mongoose.Schema({
 
 const Product = mongoose.model("Product", productSchema);
 
-app.get("/api/posts", async (req, res)=>{
+app.get("/api/product", async (req, res)=>{
   try {
     const limit = Number(req.query.limit);
-    const posts= limit ? await Post.find().limit(limit): await Post.find();
-    res.status(200).json(posts);
+    const Products= limit ? await Product.find().limit(limit): await Product.find();
+    res.status(200).json(Products);
   }
   catch(err){
 res.status(500).json({message:'Error fetching posts ', err});
@@ -61,7 +61,7 @@ const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
 // Route to handle image upload and store it in MongoDB
-app.post("/api/posts", upload.single("image"), async (req, res) => {
+app.post("/api/product", upload.single("image"), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ message: "Image file is required." });
   }
