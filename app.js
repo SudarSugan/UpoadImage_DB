@@ -45,6 +45,17 @@ const productSchema = new mongoose.Schema({
 
 const Product = mongoose.model("Product", productSchema);
 
+app.get("/api/posts", async (req, res)=>{
+  try {
+    const limit = Number(req.query.limit);
+    const posts= limit ? await Post.find().limit(limit): await Post.find();
+    res.status(200).json(posts);
+  }
+  catch(err){
+res.status(500).json({message:'Error fetching posts ', err});
+  }
+});
+
 // Multer configuration to store images in memory
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
