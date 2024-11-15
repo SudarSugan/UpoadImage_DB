@@ -29,6 +29,9 @@ mongoose
 
 // MongoDB schema for storing image data
 const productSchema = new mongoose.Schema({
+  prd_name: {type: String, required: true},
+  prd_price:{type: Number, required: true},
+  prd_desc:{type: String, required: true},
   image: {
     type: Buffer, // Stores binary data for the image
     required: true,
@@ -55,7 +58,20 @@ app.get("/api/product", async (req, res)=>{
 res.status(500).json({message:'Error fetching posts ', err});
   }
 });
-
+app.get("/api/product/:id", async (req, res)=>{
+  try {
+    const Products = await Product.findById(req.params.id);
+    if(Products){
+      res.status(200).json(Products);
+    }
+    else{
+      res.status(404).json({message:`Products with this id ${req.params.id} not found`});
+    }
+  }
+  catch(err){
+    res.status(500).json({message:"Error in fetching the request Product ID"});
+  }
+});
 // Multer configuration to store images in memory
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
@@ -67,6 +83,9 @@ app.post("/api/product", upload.single("image"), async (req, res) => {
   }
 
   const newPost = new Product({
+    prd_name: {type: String, required: true},
+    prd_price:{type: Number, required: true},
+    prd_desc:{type: String, required: true},
     image: req.file.buffer, // Store the image as a Buffer
     contentType: req.file.mimetype || 'application/octet-stream', // Default to 'application/octet-stream' if mimetype is not available
   });
@@ -78,6 +97,43 @@ app.post("/api/product", upload.single("image"), async (req, res) => {
     res.status(400).json({ message: "Error creating post", error });
   }
 });
+
+app.put("/api/product/:id", async(req, res) =>{
+  try{
+    const updateProducts = await Product.findByIdAndUpdate(req.params.id, res.body,{
+      new: true,
+  });
+  if(updateProducts){
+    res.status(201).json(updateProducts)
+  }
+  else{
+    res
+        .status(404)
+        .json({ message: `Product with ID ${req.params.id} not found` });
+  }
+}catch (error) {
+  res.status(500).json({ message: "Error updating Product", error });
+}
+});
+
+app.delete("/api/posts/:id", async (req, res) => {
+  try {
+    const deletedProducts = await Product.findByIdAndDelete(req.params.id);
+
+    if (deletedProducts) {
+      res
+        .status(200)
+        .json({ message: `Product with ID ${req.params.id} is deleted` });
+    } else {
+      res
+        .status(404)
+        .json({ message: `Product with ID ${req.params.id} not found` });
+    }
+  } catch (error) {
+    res.status(500).json({ message: "Error deleting Product", error });
+  }
+});
+
 
 app.listen(5000, () => {
   console.log("Server is running on port 5000");
