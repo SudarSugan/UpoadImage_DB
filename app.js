@@ -3,8 +3,9 @@ import mongoose from "mongoose";
 import cors from "cors";
 import dotenv from "dotenv";
 import multer from "multer";
-import path from 'path';
-import { fileURLToPath } from 'url';
+import path from "path";
+import { fileURLToPath } from "url";
+import fs from "fs";
 
 dotenv.config();
 
@@ -27,17 +28,17 @@ mongoose
     console.error("MongoDB connection error:", err);
   });
 
-// MongoDB schema for storing image data
+// MongoDB schema for storing image data as BLOB
 const productSchema = new mongoose.Schema({
-  prd_name: {type: String, required: true},
-  prd_price:{type: Number, required: true},
-  prd_desc:{type: String, required: true},
+  prd_name: { type: String, required: true },
+  prd_price: { type: Number, required: true },
+  prd_desc: { type: String, required: true },
   image: {
-    type: Buffer, // Stores binary data for the image
+    type: Buffer, // Store the image as a binary BLOB (Buffer)
     required: true,
   },
   contentType: {
-    type: String, // Store the image type, e.g., 'image/png'
+    type: String, // Store the image MIME type, e.g., 'image/png'
     required: true,
   },
   uploadedAt: {
@@ -48,31 +49,7 @@ const productSchema = new mongoose.Schema({
 
 const Product = mongoose.model("Product", productSchema);
 
-app.get("/api/product", async (req, res)=>{
-  try {
-    const limit = Number(req.query.limit);
-    const Products= limit ? await Product.find().limit(limit): await Product.find();
-    res.status(200).json(Products);
-  }
-  catch(err){
-res.status(500).json({message:'Error fetching posts ', err});
-  }
-});
-app.get("/api/product/:id", async (req, res)=>{
-  try {
-    const Products = await Product.findById(req.params.id);
-    if(Products){
-      res.status(200).json(Products);
-    }
-    else{
-      res.status(404).json({message:`Products with this id ${req.params.id} not found`});
-    }
-  }
-  catch(err){
-    res.status(500).json({message:"Error in fetching the request Product ID"});
-  }
-});
-// Multer configuration to store images in memory
+// Multer configuration to store images in memory (as Buffer)
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
@@ -82,62 +59,109 @@ app.post("/api/product", upload.single("image"), async (req, res) => {
     return res.status(400).json({ message: "Image file is required." });
   }
 
-  const newPost = new Product({
-    prd_name: {type: String, required: true},
-    prd_price:{type: Number, required: true},
-    prd_desc:{type: String, required: true},
-    image: req.file.buffer, // Store the image as a Buffer
-    contentType: req.file.mimetype || 'application/octet-stream', // Default to 'application/octet-stream' if mimetype is not available
+  const { prd_name, prd_price, prd_desc } = req.body;
+
+  if (!prd_name || !prd_price || !prd_desc) {
+    return res.status(400).json({ message: "All fields are required." });
+  }
+
+  const parsedPrice = parseFloat(prd_price); // Convert prd_price to a number
+  if (isNaN(parsedPrice)) {
+    return res.status(400).json({ message: "prd_price must be a valid number." });
+  }
+
+  // Create a new product with image data stored as Buffer (BLOB)
+  const newProduct = new Product({
+    prd_name,
+    prd_price: parsedPrice,
+    prd_desc,
+    image: req.file.buffer, // Store the image as a Buffer (BLOB)
+    contentType: req.file.mimetype || "application/octet-stream", // Default MIME type
   });
 
   try {
-    const savedPost = await newPost.save();
-    res.status(201).json(savedPost);
+    const savedProduct = await newProduct.save();
+    res.status(201).json(savedProduct);
   } catch (error) {
-    res.status(400).json({ message: "Error creating post", error });
+    res.status(400).json({ message: "Error creating product", error });
   }
 });
 
-app.put("/api/product/:id", async(req, res) =>{
-  try{
-    const updateProducts = await Product.findByIdAndUpdate(req.params.id, res.body,{
-      new: true,
-  });
-  if(updateProducts){
-    res.status(201).json(updateProducts)
-  }
-  else{
-    res
-        .status(404)
-        .json({ message: `Product with ID ${req.params.id} not found` });
-  }
-}catch (error) {
-  res.status(500).json({ message: "Error updating Product", error });
-}
-});
-
-app.delete("/api/posts/:id", async (req, res) => {
+// Route to get all products with image data
+app.get("/api/product", async (req, res) => {
   try {
-    const deletedProducts = await Product.findByIdAndDelete(req.params.id);
+    const limit = Number(req.query.limit);
+    const products = limit ? await Product.find().limit(limit) : await Product.find();
+    res.status(200).json(products);
+  } catch (err) {
+    res.status(500).json({ message: "Error fetching products", err });
+  }
+});
 
-    if (deletedProducts) {
-      res
-        .status(200)
-        .json({ message: `Product with ID ${req.params.id} is deleted` });
-    } else {
-      res
-        .status(404)
-        .json({ message: `Product with ID ${req.params.id} not found` });
+// Route to get a product by ID with image data
+app.get("/api/product/:id", async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id);
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
     }
+
+    // Convert image buffer to base64 string for easy client-side rendering
+    const base64Image = product.image.toString("base64");
+
+    res.json({
+      ...product.toObject(),
+      image: `data:${product.contentType};base64,${base64Image}`,
+    });
   } catch (error) {
-    res.status(500).json({ message: "Error deleting Product", error });
+    res.status(500).json({ message: "Error fetching product", error });
   }
 });
 
+// Route to update a product by ID (with image update support)
+app.put("/api/product/:id", upload.single("image"), async (req, res) => {
+  try {
+    const updates = req.body;
+    if (req.file) {
+      updates.image = req.file.buffer; // Update the image as Buffer (BLOB)
+      updates.contentType = req.file.mimetype;
+    }
 
-app.listen(5000, () => {
-  console.log("Server is running on port 5000");
+    const updatedProduct = await Product.findByIdAndUpdate(req.params.id, updates, {
+      new: true,
+    });
+
+    if (!updatedProduct) {
+      return res.status(404).json({ message: `Product with ID ${req.params.id} not found` });
+    }
+
+    res.status(200).json(updatedProduct);
+  } catch (error) {
+    res.status(500).json({ message: "Error updating product", error });
+  }
 });
+
+// Route to delete a product by ID
+app.delete("/api/product/:id", async (req, res) => {
+  try {
+    const deletedProduct = await Product.findByIdAndDelete(req.params.id);
+
+    if (!deletedProduct) {
+      return res.status(404).json({ message: `Product with ID ${req.params.id} not found` });
+    }
+
+    res.status(200).json({ message: `Product with ID ${req.params.id} deleted` });
+  } catch (error) {
+    res.status(500).json({ message: "Error deleting product", error });
+  }
+});
+
+// Start the server
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`Server is running on http://localhost:${PORT}`);
+});
+
 
 
 
@@ -272,10 +296,10 @@ app.listen(5000, () => {
 
 
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-});
+// const PORT = process.env.PORT || 3000;
+// app.listen(PORT, () => {
+//     console.log(`Server running on http://localhost:${PORT}`);
+// });
 
 
 
